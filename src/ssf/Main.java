@@ -1,11 +1,34 @@
 package ssf;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.security.*;
-import java.security.interfaces.*;
-import java.security.spec.*;
-import javax.crypto.*;
+import java.security.Key;
+import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.Signature;
+import java.security.SignatureException;
+import java.security.interfaces.RSAKey;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.KeySpec;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.KeyGenerator;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
 
 public class Main {
 
@@ -22,19 +45,26 @@ public class Main {
 			pubFile = new File(args[1]);
 			inFile = new File(args[2]);
 			outFile = new File(args[3]);
+			ssf(prvFile, pubFile, inFile, outFile);
 		} else {
 			System.out
 					.println("Bitte Parameter in der Reihenfolge: <privater Schluessel des Senders> <oeffentlicher Schluessel des Empfaengers> <Queldatei> <Zieldatei> angeben.");
 			System.exit(1);
 		}
-
+	}
+	
+	private static void ssf(File prvFile, File pubFile, File inFile, File outFile) {
+		//Keys erzeugen
 		RSAPrivateKey privateKey = (RSAPrivateKey) getKey(prvFile,
 				"RSA", true);
 		RSAPublicKey publicKey = (RSAPublicKey) getKey(pubFile, "RSA", false);
 		SecretKey secretKey = createSecretAESKey();
+		
+		//Geheimen Schlüssel signieren und verschlüsseln
 		byte[] secretKeySign = sign(secretKey.getEncoded(), privateKey);
 		byte[] secretKeyEnc = encodeBytes(secretKey.getEncoded(), publicKey, "RSA");
 		
+		//Daten in Datei schreiben
 		DataOutputStream out = null;
 		try {
 			out = new DataOutputStream(new FileOutputStream(outFile));
@@ -48,92 +78,13 @@ public class Main {
 			out.write(secretKeySign);
 			//Verschlüsselte Dateidaten (Bytefolge)
 			encodeAndWriteFile(inFile, secretKey, "AES", out);
-		} catch (Exception e) {
-			error(e);
-		}
-	}
-	
-	private static byte[] encodeBytes(byte[] dataBytes, Key key, String algo) {
-		Cipher cipher = getCipher(algo, key);
-		byte[] encData = encode(dataBytes, cipher);
-		return encData;
-	}
-	
-	private static byte[] encodeAndWriteFile(File file, SecretKey key, String algo, OutputStream out) {
-		byte[] encData = null;
-		try {
-			DataInputStream in = new DataInputStream(new FileInputStream(file));
-			Cipher cipher = getCipher(algo, key);
-			byte[] buffer = new byte[8];
-			int len = 0;
-			while ((len = in.read(buffer)) > 0) {
-				encData = encode(buffer.clone(), cipher);
-				out.write(encData.clone());
-			}
-		} catch (Exception e) {
-			error(e);
-		}
-		return encData;
-	}
-
-	private static Cipher getCipher(String algo, Key key) {
-		Cipher cipher = null;
-		try {
-			cipher = Cipher.getInstance(algo);
 			
-			// Initialisierung
-			cipher.init(Cipher.ENCRYPT_MODE, key);
+			System.out.println("Fertig!");
 		} catch (Exception e) {
 			error(e);
 		}
-		return cipher;
 	}
 	
-	private static byte[] encode(byte[] dataBytes, Cipher cipher) {
-		byte[] encRest = null;
-		try {
-			// nun werden die Daten verschlüsselt
-			// (update wird bei großen Datenmengen mehrfach aufgerufen werden!)
-			byte[] encData = cipher.update(dataBytes);
-
-			// mit doFinal abschließen (Rest inkl. Padding ..)
-			encRest = cipher.doFinal();
-
-			// und angezeigt
-			System.out.println("Verschlüsselte Daten: " + new String(encData) + " # "
-					+ new String(encRest));
-		} catch (Exception e) {
-			error(e);
-		}
-		return encRest;
-	}
-
-	private static byte[] sign(byte[] dataBytes, RSAPrivateKey key) {
-		Signature rsa = null;
-		byte[] signature = null;
-		try {
-			rsa = Signature.getInstance("SHA1withRSA");
-			rsa.initSign(key);
-			rsa.update(dataBytes);
-			signature = rsa.sign();
-		} catch (Exception e) {
-			error(e);
-		}
-		return signature;
-	}
-
-	private static SecretKey createSecretAESKey() {
-		SecretKey skey = null;
-		try {
-			KeyGenerator kg = KeyGenerator.getInstance("AES");
-			kg.init(128); // Schlüssellänge
-			skey = kg.generateKey();
-		} catch (Exception e) {
-			error(e);
-		}
-		return skey;
-	}
-
 	private static RSAKey getKey(File keyFile, String algo, boolean isPrivate) {
 		String name = "";
 		RSAKey key = null;
@@ -169,12 +120,100 @@ public class Main {
 				key = (RSAPublicKey) keyFactory.generatePublic(x509KeySpec);
 				System.out.println(((RSAPublicKey) key).getFormat());
 			}
+			String prvOrPub = "";
+			if (isPrivate) {
+				prvOrPub = "Private";
+			} else {
+				prvOrPub = "Public";
+			}
+			System.out.println(prvOrPub + "Key erfolgreich eingelesen: " + key);
 		} catch (Exception e) {
 			error(e);
 		}
 		return key;
 	}
 	
+	private static SecretKey createSecretAESKey() {
+		SecretKey skey = null;
+		try {
+			KeyGenerator kg = KeyGenerator.getInstance("AES");
+			kg.init(128); // Schlüssellänge
+			skey = kg.generateKey();
+			System.out.println("Geheimen Schlüssel erzeugt: " + new String(skey.getEncoded()));
+		} catch (Exception e) {
+			error(e);
+		}
+		return skey;
+	}
+	
+	private static byte[] sign(byte[] dataBytes, RSAPrivateKey key) {
+		Signature rsa = null;
+		byte[] signature = null;
+		try {
+			rsa = Signature.getInstance("SHA1withRSA");
+			rsa.initSign(key);
+			rsa.update(dataBytes);
+			signature = rsa.sign();
+			System.out.println("Geheimen Schlüssel signiert: " + new String(signature));
+		} catch (Exception e) {
+			error(e);
+		}
+		return signature;
+	}
+	
+	private static byte[] encodeBytes(byte[] dataBytes, Key key, String algo) {
+		Cipher cipher = getCipher(algo, key);
+		byte[] encData = encode(dataBytes, cipher);
+		System.out.println("Geheimen Schlüssel verschlüsselt: " + new String(encData));
+		return encData;
+	}
+	
+	private static byte[] encodeAndWriteFile(File file, SecretKey key, String algo, OutputStream out) {
+		byte[] encData = null;
+		try {
+			DataInputStream in = new DataInputStream(new FileInputStream(file));
+			Cipher cipher = getCipher(algo, key);
+			byte[] buffer = new byte[8];
+			int len = 0;
+			while ((len = in.read(buffer)) > 0) {
+				encData = encode(buffer.clone(), cipher);
+				out.write(encData.clone());
+			}
+			System.out.println("Daten verschlüsselt");
+		} catch (Exception e) {
+			error(e);
+		}
+		return encData;
+	}
+
+	private static Cipher getCipher(String algo, Key key) {
+		Cipher cipher = null;
+		try {
+			cipher = Cipher.getInstance(algo);
+			cipher.init(Cipher.ENCRYPT_MODE, key);
+		} catch (Exception e) {
+			error(e);
+		}
+		return cipher;
+	}
+	
+	private static byte[] encode(byte[] dataBytes, Cipher cipher) {
+		byte[] encRest = null;
+		try {
+			// Daten verschlüsseln
+			// (update wird bei großen Datenmengen mehrfach aufgerufen werden!)
+			byte[] encData = cipher.update(dataBytes);
+
+			// mit doFinal abschließen (Rest inkl. Padding ..)
+			encRest = cipher.doFinal();
+
+			//System.out.println("Verschlüsselte Daten: " + new String(encData) + " # " + new String(encRest));
+		} catch (Exception e) {
+			error(e);
+		}
+		return encRest;
+	}
+
 	private static void error(Exception e) {
 		if (e instanceof IOException || e instanceof FileNotFoundException) {
 			System.out.println("File not found");
