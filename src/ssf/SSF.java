@@ -149,13 +149,25 @@ public class SSF {
 		byte[] encData = null;
 		try {
 			DataInputStream in = new DataInputStream(new FileInputStream(file));
-			Cipher cipher = getCipher(algo, key);
-			byte[] buffer = new byte[8];
-			int len = 0;
-			while ((len = in.read(buffer)) > 0) {
-				encData = encode(buffer.clone(), cipher);
-				out.write(encData.clone());
-			}
+//			Cipher cipher = getCipher(algo, key);
+			Cipher cipher = Cipher.getInstance("AES");
+			cipher.init(Cipher.ENCRYPT_MODE, key);
+			
+			
+			int bytes = in.available();
+			System.out.println("Bytes: "+ bytes);
+			byte[] buffer = new byte[bytes];
+			in.read(buffer);
+			System.out.println(cipher.getOutputSize(21));
+			encData = cipher.doFinal(buffer);
+			out.write(encData);
+			//Geht nicht, da blocksize 16. habe nun so umgebaut, dass alles auf einmal eingelesen und verarbeitet wird. nicht beste wahl, aber es geht
+//			int len = 0;
+//			while ((len = in.read(buffer)) > 0) {
+//				encData = encode(buffer.clone(), cipher);
+//				out.write(encData.clone());
+//			}
+				System.out.println(encData.length);
 			System.out.println("Daten verschlüsselt");
 		} catch (Exception e) {
 			error(e);
