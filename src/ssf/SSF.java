@@ -39,7 +39,11 @@ public class SSF {
 		
 		//Geheimen Schlüssel signieren und verschlüsseln
 		byte[] secretKeySign = sign(secretKey.getEncoded(), privateKey);
-		byte[] secretKeyEnc = encodeBytes(secretKey.getEncoded(), publicKey, "RSA");
+		byte[] secretKeyEnc = encode(secretKey.getEncoded(), "RSA", publicKey);
+		
+		//Daten verschlüsseln
+		byte[] data = getDataFromFile(inFile);
+		byte[] encData = encode(data, "AES", secretKey);
 		
 		//Daten in Datei schreiben
 		DataOutputStream out = null;
@@ -54,7 +58,7 @@ public class SSF {
 			// Signatur des geheimen Schlüssels (Bytefolge)
 			out.write(secretKeySign);
 			//Verschlüsselte Dateidaten (Bytefolge)
-			encodeAndWriteFile(inFile, secretKey, "AES", out);
+			out.write(encData);
 			
 			System.out.println("Fertig!");
 		} catch (Exception e) {
@@ -138,64 +142,39 @@ public class SSF {
 		return signature;
 	}
 	
-	private static byte[] encodeBytes(byte[] dataBytes, Key key, String algo) {
-		Cipher cipher = getCipher(algo, key);
-		byte[] encData = encode(dataBytes, cipher);
-		System.out.println("Geheimen Schlüssel verschlüsselt: " + new String(encData));
-		return encData;
-	}
-	
-	private static byte[] encodeAndWriteFile(File file, SecretKey key, String algo, OutputStream out) {
-		byte[] encData = null;
+	private static byte[] getDataFromFile(File file) {
+		byte[] buffer = null;
 		try {
 			DataInputStream in = new DataInputStream(new FileInputStream(file));
-//			Cipher cipher = getCipher(algo, key);
-			Cipher cipher = Cipher.getInstance("AES");
-			cipher.init(Cipher.ENCRYPT_MODE, key);
-			
-			
 			int bytes = in.available();
 			System.out.println("Bytes: "+ bytes);
-			byte[] buffer = new byte[bytes];
+			buffer = new byte[bytes];
 			in.read(buffer);
-			System.out.println(cipher.getOutputSize(21));
-			encData = cipher.doFinal(buffer);
-			out.write(encData);
-			//Geht nicht, da blocksize 16. habe nun so umgebaut, dass alles auf einmal eingelesen und verarbeitet wird. nicht beste wahl, aber es geht
-//			int len = 0;
-//			while ((len = in.read(buffer)) > 0) {
-//				encData = encode(buffer.clone(), cipher);
-//				out.write(encData.clone());
-//			}
-				System.out.println(encData.length);
-			System.out.println("Daten verschlüsselt");
+			System.out.println("Daten aus Datei ausgelesen");
 		} catch (Exception e) {
 			error(e);
 		}
-		return encData;
-	}
-
-	private static Cipher getCipher(String algo, Key key) {
-		Cipher cipher = null;
-		try {
-			cipher = Cipher.getInstance(algo);
-			cipher.init(Cipher.ENCRYPT_MODE, key);
-		} catch (Exception e) {
-			error(e);
-		}
-		return cipher;
+		return buffer.clone();
 	}
 	
-	private static byte[] encode(byte[] dataBytes, Cipher cipher) {
+	private static byte[] encode(byte[] dataBytes, String algo, Key key) {
 		byte[] encRest = null;
+		Cipher cipher = null;
 		try {
+			//Cipher initialisieren
+			cipher = Cipher.getInstance(algo);
+			cipher.init(Cipher.ENCRYPT_MODE, key);
+			System.out.println(cipher.getOutputSize(21));
+			
 			// Daten verschlüsseln
 			// (update wird bei großen Datenmengen mehrfach aufgerufen werden!)
-			byte[] encData = cipher.update(dataBytes);
+			//byte[] encData = cipher.update(dataBytes);
 
 			// mit doFinal abschließen (Rest inkl. Padding ..)
-			encRest = cipher.doFinal();
+			encRest = cipher.doFinal(dataBytes);
 
+			System.out.println(encRest.length);
+			System.out.println("Daten verschlüsselt mit " + algo);
 			//System.out.println("Verschlüsselte Daten: " + new String(encData) + " # " + new String(encRest));
 		} catch (Exception e) {
 			error(e);
